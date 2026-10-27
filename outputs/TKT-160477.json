@@ -1,0 +1,89 @@
+{
+  "ticket_id": "TKT-160477",
+  "account_id": "ACC-1633",
+  "category": "how_to",
+  "priority": "P3",
+  "route_to": "L1_support",
+  "escalate": false,
+  "notify_tam": false,
+  "duplicate_of": null,
+  "needs_clarification": false,
+  "kb_references": [
+    "KB-1786",
+    "KB-2914"
+  ],
+  "account_signals": [
+    "Standard tier",
+    "Renewal in 240 days",
+    "Active users +4.9% over 3 months",
+    "0 open escalations"
+  ],
+  "customer_reply": "To resolve error\u202fE-2207, please regenerate the integration credential:\u202f1) Open **Admin\u202f>\u202fIntegrations\u202f>\u202fCredentials**;\u202f2) Click **Regenerate** for the credential used by your e\u2011signature integration and update the credential in the connected system;\u202f3) Trigger a manual sync and verify the job status shows **Completed**. If the signature requests are still rejected, reply with the tenant ID and the IDs of the affected contracts so we can investigate further.",
+  "internal_note": "Account ACC-1633 (Standard, renewal 240d, no escalations). No duplicate tickets. Error E-2207 documented as expired credential (KB-1786). Route to L1 with P3. No TAM notification needed.",
+  "confidence": 0.92,
+  "reasoning_trace": [
+    {
+      "step": 1,
+      "action": "lookup_account",
+      "input": "account_id=ACC-1633",
+      "observation": "ACC-1633 Frostline Retail Group | Standard | renewal 2027-06-17 (240d) | escalations 0 | SSO change never",
+      "reason": "Need account tier, renewal, modules, SSO change, escalations for triage"
+    },
+    {
+      "step": 2,
+      "action": "get_usage_trend",
+      "input": "account_id=ACC-1633",
+      "observation": "active users 2026-07 (82) -> 2026-10 (86): +4.9% over 3 months; login rate 86.4% -> 83.7%",
+      "reason": "Assess usage trend for risk evaluation"
+    },
+    {
+      "step": 3,
+      "action": "search_kb",
+      "input": "error_code=E-2207, module=CLM, query=E-2207 CLM",
+      "observation": "2 hit(s): KB-1786 E-2207: E-signature request is rejected [current], KB-2605 [DEPRECATED] E-2207: E-signature request is rejected [deprecated]",
+      "reason": "Find troubleshooting article for this error"
+    },
+    {
+      "step": 4,
+      "action": "search_tickets",
+      "input": "account_id=ACC-1633, error_code=E-2207, module=CLM, status=unresolved",
+      "observation": "0 ticket(s) in last 30d",
+      "reason": "Check for duplicate open/pending tickets"
+    },
+    {
+      "step": 5,
+      "action": "read_kb_article",
+      "input": "article_id=KB-1786",
+      "observation": "KB-1786 'E-2207: E-signature request is rejected' [troubleshooting, current]",
+      "reason": "Read troubleshooting steps for E-2207"
+    },
+    {
+      "step": 6,
+      "action": "search_kb",
+      "input": "query=CLM error handling routing, type=policy",
+      "observation": "3 hit(s): KB-6401 Handling suspected data exposure between suppliers or t [current], KB-5930 Identifying duplicate tickets [current], KB-2914 Support priority and escalation policy [current]",
+      "reason": "Find policy for routing CLM errors"
+    },
+    {
+      "step": 7,
+      "action": "search_kb",
+      "input": "query=CLM routing policy support, type=policy",
+      "observation": "3 hit(s): KB-2914 Support priority and escalation policy [current], KB-5930 Identifying duplicate tickets [current], KB-6401 Handling suspected data exposure between suppliers or t [current]",
+      "reason": "Find routing rules for CLM module tickets"
+    },
+    {
+      "step": 8,
+      "action": "read_kb_article",
+      "input": "article_id=KB-2914",
+      "observation": "KB-2914 'Support priority and escalation policy' [policy, current]",
+      "reason": "Read priority and escalation policy details"
+    },
+    {
+      "step": 9,
+      "action": "submit_triage",
+      "input": "how_to/P3 -> L1_support, escalate=False, notify_tam=False, duplicate_of=None, clarify=False",
+      "observation": "Accepted",
+      "rationale": "The KB article KB\u20111786 identifies E\u20112207 as caused by an expired integration credential and provides a clear admin\u2011level fix, making this a configuration/how\u2011to request. The account is Standard, renewal >90\u202fdays, and shows no risk signals, so no priority override applies. Per the Support priority and escalation policy (KB\u20112914), a single\u2011record functional impairment maps to P3 and is routed to L1 support."
+    }
+  ]
+}

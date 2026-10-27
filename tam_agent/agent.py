@@ -10,7 +10,7 @@ import json
 import os
 import sys
 
-from .llm import LLMClient, LLMError
+from .llm import LLMClient, LLMError, ToolCallRejected
 from .tools import Indexes, Toolbox, error_codes_in, norm_module
 
 MAX_TOOL_CALLS = 14     # hard budget per ticket; the model is told to submit when it runs out
@@ -107,7 +107,14 @@ def triage(ticket: dict, ctx: Context) -> dict:
     try:
         for _ in range(MAX_TURNS):
             _compact(messages)
-            resp = ctx.llm.chat_tools(messages, Toolbox.SPECS, SYSTEM)
+            try:
+                resp = ctx.llm.chat_tools(messages, Toolbox.SPECS, SYSTEM)
+            except ToolCallRejected as e:  # e.g. model invented a tool name - feed the error back and continue
+                log("invalid_tool_call", "", _short(str(e), 300))
+                messages.append({"role": "user", "content": "Your last tool call was rejected: it used a tool or "
+                                 "arguments that do not exist. Use only: " +
+                                 ", ".join(s["name"] for s in Toolbox.SPECS) + "."})
+                continue
             messages.append({"role": "assistant", "content": resp["content"], "tool_calls": resp["tool_calls"]})
             if resp["content"].strip():
                 log("think", "", _short(resp["content"].strip(), 400))
@@ -140,6 +147,9 @@ def triage(ticket: dict, ctx: Context) -> dict:
     except LLMError as e:
         log("llm_error", "", _short(str(e), 300))
         return _fallback(ticket, box, trace, f"LLM failure: {e}")
+    except Exception as e:  # never lose a ticket: hand it to a human with what we gathered
+        log("agent_error", "", _short(repr(e), 300))
+        return _fallback(ticket, box, trace, f"Unexpected error: {e!r}")
     log("stop", "", "Agent ended without an accepted submission (turn budget exhausted).")
     return _fallback(ticket, box, trace, "Agent did not submit a decision within budget.")
 

@@ -320,11 +320,11 @@ class Toolbox:
             return {"error": "Provide error_code or keywords"}, "no query"
         code = error_code.strip().upper() if error_code else None
         kw = set(tokenize(keywords or ""))
-        own = self.ticket.get("account_id") or ""
+        own = self.idx.tickets[self.ticket["ticket_id"]]["_account"]  # resolved via domain if account_id is blank
         accts, n = set(), 0
         for t in self.idx.tickets.values():
             age = (self.created - datetime.fromisoformat(t["created_at"])).total_seconds() / 86400
-            if age < 0 or age > int(days_back) or t["_account"] == own:
+            if age < 0 or age > int(days_back) or t["_account"] == own or t["ticket_id"] == self.ticket["ticket_id"]:
                 continue
             if code and code not in t["_codes"]:
                 continue

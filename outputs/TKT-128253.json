@@ -1,0 +1,73 @@
+{
+  "ticket_id": "TKT-128253",
+  "account_id": "ACC-3737",
+  "category": "needs_info",
+  "priority": "P3",
+  "route_to": "L1_support",
+  "escalate": false,
+  "notify_tam": false,
+  "duplicate_of": null,
+  "needs_clarification": true,
+  "kb_references": [
+    "KB-2914"
+  ],
+  "account_signals": [
+    "Standard tier",
+    "Renewal in 300 days",
+    "0 open escalations"
+  ],
+  "customer_reply": "Hi, thanks for reaching out. To investigate, could you please provide more details? Specifically, which module(s) are impacted, any error messages or codes you see, the number of users affected, and when the issue started. Also let us know if any recent configuration changes (e.g., SSO, permissions) were made.",
+  "internal_note": "Ticket TKT-128253: vague 'nothing works' message, no module or error code. Account ACC-3737 Standard, renewal in 300 days, no escalations. No open similar tickets. Apply KB-2914 insufficient info rule: set P3, request details, needs clarification.",
+  "confidence": 0.9,
+  "reasoning_trace": [
+    {
+      "step": 1,
+      "action": "lookup_account",
+      "input": "account_id=ACC-3737",
+      "observation": "ACC-3737 Clearwater Manufacturing | Standard | renewal 2027-08-16 (300d) | escalations 0 | SSO change never",
+      "reason": "Need account tier, renewal, modules, SSO change, escalations to assess risk and routing."
+    },
+    {
+      "step": 2,
+      "action": "search_tickets",
+      "input": "account_id=ACC-3737, status=unresolved",
+      "observation": "0 ticket(s) in last 30d",
+      "reason": "Check for existing open tickets that might be duplicate or related."
+    },
+    {
+      "step": 3,
+      "action": "search_kb",
+      "input": "query=insufficient information triage policy, type=policy",
+      "observation": "3 hit(s): KB-2914 Support priority and escalation policy [current], KB-5930 Identifying duplicate tickets [current], KB-6401 Handling suspected data exposure between suppliers or t [current]",
+      "reason": "Need policy for handling tickets lacking details"
+    },
+    {
+      "step": 4,
+      "action": "search_kb",
+      "input": "query=needs information policy triage insufficient details, type=policy",
+      "observation": "3 hit(s): KB-2914 Support priority and escalation policy [current], KB-6401 Handling suspected data exposure between suppliers or t [current], KB-5930 Identifying duplicate tickets [current]",
+      "reason": "Find policy for insufficient info"
+    },
+    {
+      "step": 5,
+      "action": "search_kb",
+      "input": "query=needs information policy ticket insufficient details, type=policy",
+      "observation": "3 hit(s): KB-2914 Support priority and escalation policy [current], KB-5930 Identifying duplicate tickets [current], KB-6401 Handling suspected data exposure between suppliers or t [current]",
+      "reason": "Find policy for insufficient info handling"
+    },
+    {
+      "step": 6,
+      "action": "read_kb_article",
+      "input": "article_id=KB-2914",
+      "observation": "KB-2914 'Support priority and escalation policy' [policy, current]",
+      "reason": "Read priority definitions to decide appropriate priority for vague ticket"
+    },
+    {
+      "step": 7,
+      "action": "submit_triage",
+      "input": "needs_info/P3 -> L1_support, escalate=False, notify_tam=False, duplicate_of=None, clarify=True",
+      "observation": "Accepted",
+      "rationale": "The ticket lacks any module or symptom information, so per KB-2914 Insufficient information policy we must set priority to P3, request clarification, and mark as needs_info. No duplicate tickets were found, and the account is not at risk (renewal >90 days, no escalations)."
+    }
+  ]
+}

@@ -47,6 +47,10 @@ class LLMError(RuntimeError):
     pass
 
 
+class ToolCallRejected(LLMError):
+    """Provider refused the model's tool call (e.g. a hallucinated tool name). Recoverable: tell the model."""
+
+
 class LLMClient:
     def __init__(self, provider: str | None = None, model: str | None = None):
         self.provider = (provider or os.getenv("LLM_PROVIDER", "ollama")).lower()
@@ -102,10 +106,14 @@ class LLMClient:
                           file=sys.stderr, flush=True)
                     time.sleep(delay)
                     continue
+                if e.code == 400 and "tool_use_failed" in detail:
+                    raise ToolCallRejected(detail) from e
                 raise LLMError(f"HTTP {e.code} from {self.provider}: {detail}") from e
-            except (urllib.error.URLError, TimeoutError) as e:
-                if attempt < 5:
-                    time.sleep(2 ** attempt + random.random())
+            except OSError as e:  # URLError, timeouts, connection resets (HTTPError is handled above)
+                if attempt < 7:
+                    delay = min(60, 2 ** attempt * 2) + random.random()
+                    print(f"  [llm] network error, retry {attempt + 1} in {delay:.0f}s: {e}", file=sys.stderr, flush=True)
+                    time.sleep(delay)
                     continue
                 raise LLMError(f"Network error calling {self.provider}: {e}") from e
         raise LLMError("retries exhausted")
