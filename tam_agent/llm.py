@@ -19,6 +19,7 @@ import os
 import random
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -89,8 +90,7 @@ class LLMClient:
                                          headers={"Content-Type": "application/json", "User-Agent": "tam-agent/1.0",
                                                   **headers})
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as r:
-                    data = json.loads(r.read())
+                data = self._send(req)
                 self.calls += 1  # successful model turns only; retries are not counted
                 return data
             except urllib.error.HTTPError as e:
@@ -102,8 +102,9 @@ class LLMClient:
                         delay = int(hint.group(1) or 0) * 60 + secs + 0.5
                     else:
                         delay = min(60, 2 ** attempt * 3) + random.random()
-                    print(f"  [llm] HTTP {e.code}, retry {attempt + 1} in {delay:.0f}s: {detail[:150]}",
-                          file=sys.stderr, flush=True)
+                    which = re.search(r"on (tokens|requests) per \w+", detail)
+                    print(f"  [llm] HTTP {e.code} ({which.group(0) if which else detail[:80]}), "
+                          f"retry {attempt + 1} in {delay:.0f}s", file=sys.stderr, flush=True)
                     time.sleep(delay)
                     continue
                 if e.code == 400 and "tool_use_failed" in detail:
@@ -117,6 +118,27 @@ class LLMClient:
                     continue
                 raise LLMError(f"Network error calling {self.provider}: {e}") from e
         raise LLMError("retries exhausted")
+
+    def _send(self, req) -> dict:
+        """urlopen under a hard wall-clock limit. urllib's own timeout does not cover DNS resolution, which can
+        hang indefinitely on a flaky network; a stuck request is abandoned and surfaces as a retryable error."""
+        box: dict = {}
+
+        def work():
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                    box["data"] = json.loads(r.read())
+            except BaseException as e:  # re-raised in the caller's thread
+                box["err"] = e
+
+        t = threading.Thread(target=work, daemon=True)
+        t.start()
+        t.join(self.timeout + 15)
+        if t.is_alive():
+            raise TimeoutError(f"no response within {self.timeout + 15:.0f}s (hung connection)")
+        if "err" in box:
+            raise box["err"]
+        return box["data"]
 
     # ---------------------------------------------------- OpenAI-compatible API
     def _openai_compat(self, messages, tools, system, max_tokens, temperature):
