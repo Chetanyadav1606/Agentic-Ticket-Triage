@@ -40,6 +40,7 @@ def main():
     with open(OUT / "run_log.jsonl", "a") as log:
         for tid in ids:
             t0, calls0 = time.time(), ctx.llm.calls
+            tin0, tout0 = ctx.llm.input_tokens, ctx.llm.output_tokens
             rec = {"ticket_id": tid}
             try:
                 ticket = dict(by_id[tid])
@@ -47,10 +48,14 @@ def main():
                 errs = validate(result)
                 (OUT / f"{tid}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
                 rec |= {"status": "ok" if not errs else "schema_error", "errors": errs}
-                ok += not errs
+                ok += not errs and "AUTOMATED TRIAGE FAILED" not in result.get("internal_note", "")
             except Exception as e:
                 rec |= {"status": "exception", "errors": [repr(e)], "traceback": traceback.format_exc(limit=3)}
-            rec |= {"seconds": round(time.time() - t0, 2), "llm_calls": ctx.llm.calls - calls0}
+            rec |= {"seconds": round(time.time() - t0, 2), "llm_calls": ctx.llm.calls - calls0,
+                    "input_tokens": ctx.llm.input_tokens - tin0, "output_tokens": ctx.llm.output_tokens - tout0,
+                    "model": f"{ctx.llm.provider}/{ctx.llm.model}"}
+            if rec.get("status") == "ok" and "AUTOMATED TRIAGE FAILED" in result.get("internal_note", ""):
+                rec["status"] = "fallback"  # schema-valid, but the agent did not reach a decision
             log.write(json.dumps(rec) + "\n")
             print(f"{tid}: {rec['status']} ({rec['seconds']}s, {rec['llm_calls']} LLM calls)")
     print(f"\n{ok}/{len(ids)} tickets produced valid output")

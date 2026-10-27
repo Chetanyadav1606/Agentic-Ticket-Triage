@@ -26,6 +26,7 @@ How to work:
   several, including reading an article and then the article it links to. Do not run lookups that cannot change
   the decision, and do not stop before you have the evidence the policy needs.
 - Every tool takes a `reason`: one sentence on why this call, now.
+- When several lookups are independent of each other, request them together in one turn (parallel tool calls).
 - Support policy articles in the KB define priority, routing, escalation, TAM notification, duplicate handling
   and clarification rules. Find and read the relevant policy before deciding; apply it literally.
 - Resolve the account from account_id or the requester domain (authoritative). Company names are noisy and
@@ -105,6 +106,7 @@ def triage(ticket: dict, ctx: Context) -> dict:
 
     try:
         for _ in range(MAX_TURNS):
+            _compact(messages)
             resp = ctx.llm.chat_tools(messages, Toolbox.SPECS, SYSTEM)
             messages.append({"role": "assistant", "content": resp["content"], "tool_calls": resp["tool_calls"]})
             if resp["content"].strip():
@@ -133,12 +135,27 @@ def triage(ticket: dict, ctx: Context) -> dict:
                     if tool_calls >= MAX_TOOL_CALLS:
                         result = result | {"budget": "Tool budget exhausted. Call submit_triage now."}
                 messages.append({"role": "tool", "tool_call_id": tc["id"], "name": name,
-                                 "content": json.dumps(result, default=str)})
+                                 "content": json.dumps(result, default=str),
+                                 "summary": trace[-1]["observation"] if name != "submit_triage" else None})
     except LLMError as e:
         log("llm_error", "", _short(str(e), 300))
         return _fallback(ticket, box, trace, f"LLM failure: {e}")
     log("stop", "", "Agent ended without an accepted submission (turn budget exhausted).")
     return _fallback(ticket, box, trace, "Agent did not submit a decision within budget.")
+
+
+COMPACTABLE = {"lookup_account", "get_usage_trend", "search_tickets", "find_reports_across_accounts", "search_kb"}
+
+
+def _compact(messages: list[dict]) -> None:
+    """Context compaction: keep the newest batch of tool results verbatim; older search/lookup results shrink to
+    their one-line trace summary (the model already acted on them). Full KB articles are kept - the decision and
+    the reply depend on their text. Keeps per-call tokens roughly flat as the investigation grows."""
+    last = max((i for i, m in enumerate(messages) if m["role"] == "assistant"), default=0)
+    for m in messages[:last]:
+        if m["role"] == "tool" and m.get("summary") and m["name"] in COMPACTABLE and not m.get("compacted"):
+            m["content"] = json.dumps({"compacted_result": m["summary"]})
+            m["compacted"] = True
 
 
 def _handle_submit(box: Toolbox, args: dict, log) -> tuple[dict, str]:

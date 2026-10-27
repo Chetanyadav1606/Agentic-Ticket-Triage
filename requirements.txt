@@ -1,5 +1,2 @@
-pandas>=2.0
-# Install the SDK for the provider you use:
-# anthropic
-# openai
-# Add any other libraries you use (e.g. langgraph, rank_bm25, sentence-transformers, chromadb).
+# No third-party packages required: the agent uses only the Python standard library
+# (csv loaders, BM25 retrieval, urllib-based LLM client for Gemini / Anthropic / OpenAI / Ollama).

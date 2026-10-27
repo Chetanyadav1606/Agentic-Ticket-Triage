@@ -1,5 +1,6 @@
 """Thin LLM client with native tool calling. Pick a provider with env vars (see .env.example).
 
+  LLM_PROVIDER=groq       needs GROQ_API_KEY (OpenAI-compatible)
   LLM_PROVIDER=gemini     needs GEMINI_API_KEY (Google's OpenAI-compatible endpoint)
   LLM_PROVIDER=anthropic  needs ANTHROPIC_API_KEY
   LLM_PROVIDER=openai     needs OPENAI_API_KEY
@@ -16,6 +17,7 @@ and this module converts it to each provider's wire format.
 import json
 import os
 import random
+import re
 import sys
 import time
 import urllib.error
@@ -32,9 +34,10 @@ if _env.exists():
             os.environ.setdefault(_k.strip(), _v.strip())
 
 DEFAULT_MODELS = {"ollama": "qwen2.5:7b", "anthropic": "claude-sonnet-4-5", "openai": "gpt-4o-mini",
-                  "gemini": "gemini-3.5-flash"}
+                  "gemini": "gemini-3.5-flash", "groq": "openai/gpt-oss-120b"}
 OPENAI_COMPAT = {
     "openai": ("https://api.openai.com/v1", "OPENAI_API_KEY"),
+    "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
     "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY"),
     "ollama": (os.getenv("OLLAMA_HOST", "http://localhost:11434") + "/v1", None),
 }
@@ -58,9 +61,10 @@ class LLMClient:
 
     # ------------------------------------------------------------------ public
     def chat_tools(self, messages: list[dict], tools: list[dict], system: str,
-                   max_tokens: int = 8192, temperature: float = 0.0) -> dict:
+                   max_tokens: int | None = None, temperature: float = 0.0) -> dict:
         """One model turn. tools: [{"name", "description", "parameters": JSON schema}].
         Returns {"content": str, "tool_calls": [{"id", "name", "args", "raw"}]}."""
+        max_tokens = max_tokens or int(os.getenv("LLM_MAX_TOKENS", "4096"))
         if self.provider == "anthropic":
             return self._anthropic(messages, tools, system, max_tokens, temperature)
         return self._openai_compat(messages, tools, system, max_tokens, temperature)
@@ -72,13 +76,14 @@ class LLMClient:
     # --------------------------------------------------------------- transport
     def _post(self, url: str, body: dict, headers: dict) -> dict:
         """POST with pacing and retry on rate limits / transient server errors."""
-        for attempt in range(6):
+        for attempt in range(8):
             wait = self.min_interval - (time.time() - self._last)
             if wait > 0:
                 time.sleep(wait)
             self._last = time.time()
             req = urllib.request.Request(url, data=json.dumps(body).encode(),
-                                         headers={"Content-Type": "application/json", **headers})
+                                         headers={"Content-Type": "application/json", "User-Agent": "tam-agent/1.0",
+                                                  **headers})
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as r:
                     data = json.loads(r.read())
@@ -86,8 +91,13 @@ class LLMClient:
                 return data
             except urllib.error.HTTPError as e:
                 detail = e.read().decode(errors="replace")[:500]
-                if e.code in (429, 500, 502, 503, 504, 529) and attempt < 5:
-                    delay = min(60, 2 ** attempt * 3) + random.random()
+                if e.code in (429, 500, 502, 503, 504, 529) and attempt < 7:
+                    hint = re.search(r"try again in (?:(\d+)m)?([\d.]+)(ms|s)", detail)
+                    if hint:  # provider says exactly how long the token/rate window needs
+                        secs = float(hint.group(2)) / (1000 if hint.group(3) == "ms" else 1)
+                        delay = int(hint.group(1) or 0) * 60 + secs + 0.5
+                    else:
+                        delay = min(60, 2 ** attempt * 3) + random.random()
                     print(f"  [llm] HTTP {e.code}, retry {attempt + 1} in {delay:.0f}s: {detail[:150]}",
                           file=sys.stderr, flush=True)
                     time.sleep(delay)
