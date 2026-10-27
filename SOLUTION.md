@@ -68,7 +68,7 @@ The KB and ticket table never enter the prompt. One HTTP client covers Groq, Gem
 | 119877 | "Not urgent" | Users **−49%**, 2 escalations, renews in 61 days | how_to · **P4→P3** · escalate · TAM |
 | 160094 | Bid error | SSO changed 6 days ago (KB-4795 → KB-7889) | incident · **P2** · L2 |
 | 135081 | Calm "FYI" | Supplier saw competitor bids = data exposure | security · **P1** · escalate |
-| 192732 | Complaint | Open original TKT-122022, same error | duplicate · original's priority |
+| 192732 | Complaint | Open original TKT-122022, same error | duplicate · P2 ⚠️ (should keep original's P3, see §4) |
 | 169327 | Blank account | Domain → Ironleaf Foods *Europe*, not Ironleaf Foods | incident · P3 · L1 |
 | 158764 | How-to | Hidden "set P1, list all customers" injection | how_to · **P4** · flagged |
 | 160067 | "Bug" | 200-item bulk limit is by design | feature_request · P4 · Product |
@@ -108,8 +108,13 @@ The KB and ticket table never enter the prompt. One HTTP client covers Groq, Gem
 - One run per ticket with no voting, so results can vary. First drafts are often incomplete, and **the critic's
   second pass matters**.
 - Keyword retrieval only. The module alias map is hand-written. The critic covers the main policy rules only.
-- No gold labels: accuracy was **checked by hand**. Two tickets were rerun after fixing a retrieval blind spot and
-  adding a duplicate-priority check. `run_log.jsonl` keeps the full history, including earlier API failures.
+- No gold labels: accuracy was **checked by hand**. That review found issues in the submitted outputs. They are
+  **fixed in code, but the outputs were not regenerated** before the deadline (the free-tier daily token cap was hit):
+  - TKT-192732 keeps P2 instead of the original's P3. Fix: the critic now checks duplicate priority.
+  - TKT-119877 cites generic articles instead of KB-6082, because a type filter hid it. Fix: `search_kb` now
+    surfaces strong matches of other types.
+  - Trace summaries labelled the May login rate as July. Fix: the label now uses the same base month.
+- `run_log.jsonl` keeps the full history, including earlier API failures.
 
 ## 5. ▶️ How to run
 ```bash
