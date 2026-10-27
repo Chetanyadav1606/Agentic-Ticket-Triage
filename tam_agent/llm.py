@@ -16,6 +16,7 @@ and this module converts it to each provider's wire format.
 import json
 import os
 import random
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -31,7 +32,7 @@ if _env.exists():
             os.environ.setdefault(_k.strip(), _v.strip())
 
 DEFAULT_MODELS = {"ollama": "qwen2.5:7b", "anthropic": "claude-sonnet-4-5", "openai": "gpt-4o-mini",
-                  "gemini": "gemini-2.5-flash"}
+                  "gemini": "gemini-3.5-flash"}
 OPENAI_COMPAT = {
     "openai": ("https://api.openai.com/v1", "OPENAI_API_KEY"),
     "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY"),
@@ -50,13 +51,14 @@ class LLMClient:
             raise ValueError(f"Unknown LLM_PROVIDER: {self.provider}")
         self.model = model or os.getenv("LLM_MODEL") or DEFAULT_MODELS[self.provider]
         self.min_interval = float(os.getenv("LLM_MIN_INTERVAL", "0"))  # seconds between calls (free-tier RPM)
+        self.timeout = float(os.getenv("LLM_TIMEOUT", "120"))
         self.calls = 0  # simple counter you can report for cost/latency
         self.input_tokens = self.output_tokens = 0
         self._last = 0.0
 
     # ------------------------------------------------------------------ public
     def chat_tools(self, messages: list[dict], tools: list[dict], system: str,
-                   max_tokens: int = 4096, temperature: float = 0.0) -> dict:
+                   max_tokens: int = 8192, temperature: float = 0.0) -> dict:
         """One model turn. tools: [{"name", "description", "parameters": JSON schema}].
         Returns {"content": str, "tool_calls": [{"id", "name", "args", "raw"}]}."""
         if self.provider == "anthropic":
@@ -75,16 +77,20 @@ class LLMClient:
             if wait > 0:
                 time.sleep(wait)
             self._last = time.time()
-            self.calls += 1
             req = urllib.request.Request(url, data=json.dumps(body).encode(),
                                          headers={"Content-Type": "application/json", **headers})
             try:
-                with urllib.request.urlopen(req, timeout=300) as r:
-                    return json.loads(r.read())
+                with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                    data = json.loads(r.read())
+                self.calls += 1  # successful model turns only; retries are not counted
+                return data
             except urllib.error.HTTPError as e:
                 detail = e.read().decode(errors="replace")[:500]
                 if e.code in (429, 500, 502, 503, 504, 529) and attempt < 5:
-                    time.sleep(min(60, 2 ** attempt * 3) + random.random())
+                    delay = min(60, 2 ** attempt * 3) + random.random()
+                    print(f"  [llm] HTTP {e.code}, retry {attempt + 1} in {delay:.0f}s: {detail[:150]}",
+                          file=sys.stderr, flush=True)
+                    time.sleep(delay)
                     continue
                 raise LLMError(f"HTTP {e.code} from {self.provider}: {detail}") from e
             except (urllib.error.URLError, TimeoutError) as e:
