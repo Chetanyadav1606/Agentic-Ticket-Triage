@@ -279,7 +279,8 @@ class Toolbox:
                "declined_more_than_25pct": chg < -25}
         self.usage_seen[account_id] = res
         return res, (f"active users {res['compared']}: {chg:+}% over 3 months; "
-                     f"login rate {recent[0]['login_rate_pct']}% -> {last['login_rate_pct']}%")
+                     f"login rate {base['month']} {base['login_rate_pct']}% -> "
+                     f"{last['month']} {last['login_rate_pct']}%")
 
     def t_search_tickets(self, account_id, module=None, error_code=None, keywords=None, status=None, days_back=30):
         mod = norm_module(module)
@@ -355,8 +356,6 @@ class Toolbox:
         for i, aid in enumerate(self.idx.kb_ids):
             a = self.idx.kb[aid]
             m = a["meta"]
-            if type and m.get("type") != type:
-                continue
             if mod and m.get("module") not in (mod, "All"):
                 continue
             s = self.idx.bm25.score(q, i)
@@ -370,14 +369,26 @@ class Toolbox:
             if s > 0:
                 scored.append((s, aid))
         scored.sort(reverse=True)
+        matching = [(s, aid) for s, aid in scored if not type or self.idx.kb[aid]["meta"].get("type") == type]
         res = []
-        for s, aid in scored[:max(1, min(int(top_k), 10))]:
+        for s, aid in matching[:max(1, min(int(top_k), 10))]:
             a = self.idx.kb[aid]
             body = " ".join(l for l in a["body"].splitlines() if l.strip() and not l.startswith("#"))
             res.append(self._kb_brief(a, body[:220]) | {"score": round(s, 1)})
             self.retrieved.add(aid)
-        return ({"results": res} if res else {"results": [], "hint": "No match. Try other words or drop filters."},
-                f"{len(res)} hit(s): " + ", ".join(f"{r['id']} {r['title'][:55]} [{r['status']}]" for r in res))
+        out = {"results": res} if res else {"results": [], "hint": "No match. Try other words or drop filters."}
+        if type:  # a type filter can hide the best article (e.g. a troubleshooting page for a "how do I" question)
+            best = res[0]["score"] if res else 0
+            hidden = [(s, aid) for s, aid in scored if (s, aid) not in matching and s >= 0.8 * best][:3]
+            if hidden:
+                out["strong_matches_of_other_types"] = [self._kb_brief(self.idx.kb[aid]) | {"score": round(s, 1)}
+                                                        for s, aid in hidden]
+                self.retrieved.update(aid for _, aid in hidden)
+        summ = f"{len(res)} hit(s): " + ", ".join(f"{r['id']} {r['title'][:55]} [{r['status']}]" for r in res)
+        if out.get("strong_matches_of_other_types"):
+            summ += " | other types: " + ", ".join(f"{h['id']} {h['title'][:45]} [{h['type']}]"
+                                                   for h in out["strong_matches_of_other_types"])
+        return out, summ
 
     def t_read_kb_article(self, article_id):
         aid = article_id.strip().upper()
@@ -428,6 +439,9 @@ class Toolbox:
                 if not (0 <= age <= 7) or t["status"] not in ("open", "pending_customer"):
                     warns.append(f"{dup} is {round(age, 1)} days old with status '{t['status']}'; duplicate policy "
                                  f"needs an open/pending ticket within 7 days")
+                if t["customer_priority"] and sub.get("priority") != t["customer_priority"]:
+                    warns.append(f"duplicate policy keeps the original ticket's priority; {dup} is recorded as "
+                                 f"{t['customer_priority']}, you chose {sub.get('priority')}")
             if sub.get("category") != "duplicate":
                 warns.append("duplicate_of is set but category is not 'duplicate'")
         elif sub.get("category") == "duplicate":

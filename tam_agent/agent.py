@@ -56,7 +56,9 @@ The submission:
 - kb_references: the current articles that support the decision, including the policy articles you applied.
 - account_signals: concrete facts with numbers (e.g. "Renewal in 46 days", "Active users -31% over 3 months").
 - customer_reply: professional, specific next steps or workaround from the KB, or the specific questions needed.
-  No internal-only details, no speculation about cause for security reports.
+  Spell out the actual steps (including cautions/side effects the article mentions) - customers cannot open
+  internal KB IDs. Only advise what a KB article you read supports. No internal-only details, no speculation
+  about cause for security reports.
 - internal_note: concise for the support engineer: evidence, policy applied, links (incident IDs, original
   ticket), anything suspicious.
 - confidence: calibrated, 0.5-0.95. Use ~0.9 only when a KB article and policy match exactly; lower it when
